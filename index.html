@@ -4,12 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Premium Web Torch</title>
-    <!-- Razorpay Checkout Script -->
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
         :root {
             --bg-off: radial-gradient(circle at center, #2b2b36, #0d0d12);
-            --bg-on: #ffffff; /* স্ক্রিন টর্চের জন্য সাদা রং */
+            --bg-on: #ffffff;
             --glass-bg: rgba(255, 255, 255, 0.08);
             --glass-border: rgba(255, 255, 255, 0.2);
             --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
@@ -38,7 +36,6 @@
             transition: background 0.5s ease, color 0.5s ease;
         }
 
-        /* যখন টর্চ অন থাকবে (Screen Torch) */
         body.torch-active {
             background: var(--bg-on);
             color: var(--text-color-on);
@@ -141,7 +138,7 @@
             text-align: center;
             transform: translateY(20px);
             transition: transform 0.3s ease;
-            background: #1c1c24; /* ডার্ক মোডাল */
+            background: #1c1c24;
             color: white;
             border-radius: 24px;
         }
@@ -156,6 +153,47 @@
             font-weight: 600;
         }
 
+        .upi-box {
+            width: 100%;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            margin-bottom: 20px;
+        }
+
+        .upi-box span {
+            display: block;
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-bottom: 5px;
+        }
+
+        .upi-box h3 {
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+            color: #4cd137;
+            word-wrap: break-word;
+        }
+
+        .utr-input {
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            color: white;
+            text-align: center;
+            font-size: 1rem;
+            outline: none;
+            transition: border 0.3s ease;
+        }
+
+        .utr-input:focus {
+            border: 1px solid #5b92e5;
+        }
+
         .modal-btn {
             width: 100%;
             padding: 16px;
@@ -166,7 +204,7 @@
             font-weight: 600;
             cursor: pointer;
             color: white;
-            transition: background 0.2s ease;
+            transition: all 0.3s ease;
         }
 
         .btn-primary {
@@ -176,6 +214,14 @@
 
         .btn-primary:active {
             background: #4a7bc2;
+            transform: scale(0.98);
+        }
+
+        .btn-primary:disabled {
+            background: #4a4a5a;
+            box-shadow: none;
+            cursor: not-allowed;
+            opacity: 0.7;
         }
 
         .btn-secondary {
@@ -200,11 +246,17 @@
     <div class="modal-overlay" id="paymentModal">
         <div class="modal-content">
             <h2>Pay Rs. 1.00 to Turn Off</h2>
-            <p style="font-size: 0.9rem; opacity: 0.7; margin-bottom: 20px;">
-                Secure payment via Razorpay to turn off the screen torch.
-            </p>
             
-            <button class="modal-btn btn-primary" id="btnPaid">Pay with Razorpay</button>
+            <!-- UPI ID Display Box -->
+            <div class="upi-box">
+                <span>Pay to this UPI ID:</span>
+                <h3>razorpay.me/@sambitghosh5969</h3>
+            </div>
+
+            <!-- UTR Input Field -->
+            <input type="text" id="utrInput" class="utr-input" placeholder="Enter 12-digit UTR Number" maxlength="12">
+            
+            <button class="modal-btn btn-primary" id="btnVerify">Verify Payment</button>
             <button class="modal-btn btn-secondary" id="btnCancel">Keep it ON</button>
         </div>
     </div>
@@ -213,20 +265,17 @@
         const powerBtn = document.getElementById('powerBtn');
         const statusText = document.getElementById('statusText');
         const paymentModal = document.getElementById('paymentModal');
-        const btnPaid = document.getElementById('btnPaid');
+        const btnVerify = document.getElementById('btnVerify');
         const btnCancel = document.getElementById('btnCancel');
+        const utrInput = document.getElementById('utrInput');
 
         let isTorchOn = false;
 
-        // -----------------------------------------------------
-        // 1. Torch Logic (Screen Torch)
-        // -----------------------------------------------------
         function turnTorchOn() {
             isTorchOn = true;
             document.body.classList.add('torch-active');
             statusText.innerText = 'Torch ON';
             
-            // ফুলস্ক্রিন করার চেষ্টা (ঐচ্ছিক, ভালো স্ক্রিন টর্চ অভিজ্ঞতার জন্য)
             try {
                 if(document.documentElement.requestFullscreen) {
                     document.documentElement.requestFullscreen();
@@ -239,8 +288,10 @@
             document.body.classList.remove('torch-active');
             statusText.innerText = 'Torch OFF';
             paymentModal.classList.remove('active');
+            utrInput.value = ''; // ইনপুট ক্লিয়ার করা হচ্ছে
+            btnVerify.innerText = 'Verify Payment';
+            btnVerify.disabled = false;
             
-            // ফুলস্ক্রিন থেকে বের হওয়া
             try {
                 if(document.exitFullscreen) {
                     document.exitFullscreen();
@@ -248,54 +299,38 @@
             } catch(e) {}
         }
 
-        // -----------------------------------------------------
-        // 2. Razorpay Integration
-        // -----------------------------------------------------
-        var options = {
-            "key": "rzp_test_YOUR_KEY_HERE", // এখানে আপনার Razorpay Test Key বসাবেন
-            "amount": "100", // 100 পয়সা = 1 টাকা
-            "currency": "INR",
-            "name": "Premium Torch",
-            "description": "Torch Off Fee",
-            "handler": function (response) {
-                // পেমেন্ট সফল হলে এই ফাংশনটি চলবে
-                alert("Payment Successful! Payment ID: " + response.razorpay_payment_id);
-                turnTorchOff();
-            },
-            "prefill": {
-                "name": "Sambit Ghosh",
-                "email": "sambit@example.com",
-                "contact": "9000000000"
-            },
-            "theme": {
-                "color": "#5b92e5"
-            }
-        };
-
-        var rzp1 = new Razorpay(options);
-        
-        // পেমেন্ট ফেইল হলে এলার্ট দেখাবে
-        rzp1.on('payment.failed', function (response){
-            alert("Payment Failed! Reason: " + response.error.description);
-        });
-
-        // -----------------------------------------------------
-        // 3. Button Click Events
-        // -----------------------------------------------------
         powerBtn.addEventListener('click', () => {
             if (!isTorchOn) {
                 turnTorchOn();
             } else {
-                paymentModal.classList.add('active'); // টর্চ অফ করতে চাইলে মোডাল আসবে
+                paymentModal.classList.add('active'); 
             }
         });
 
         btnCancel.addEventListener('click', () => {
             paymentModal.classList.remove('active');
+            utrInput.value = ''; // ক্যানসেল করলে ইনপুট ক্লিয়ার হবে
         });
 
-        btnPaid.addEventListener('click', () => {
-            rzp1.open(); // Razorpay পপ-আপ ওপেন হবে
+        // UTR ভেরিফিকেশন লজিক
+        btnVerify.addEventListener('click', () => {
+            const utrValue = utrInput.value.trim();
+            
+            // চেক করা হচ্ছে UTR নম্বরে কিছু লেখা হয়েছে কি না (সাধারণত UTR ১২ ডিজিটের হয়)
+            if (utrValue.length >= 10) {
+                
+                // রিয়েলিস্টিক লোডিং অ্যানিমেশন
+                btnVerify.innerText = "Verifying...";
+                btnVerify.disabled = true;
+
+                setTimeout(() => {
+                    alert("Payment Verified Successfully!\nUTR: " + utrValue);
+                    turnTorchOff();
+                }, 1500); // ১.৫ সেকেন্ড পর সাকসেস হবে
+
+            } else {
+                alert("Please enter a valid 12-digit UTR Number!");
+            }
         });
     </script>
 </body>
