@@ -4,15 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Premium Web Torch</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
     <style>
         :root {
             --bg-off: radial-gradient(circle at center, #2b2b36, #0d0d12);
-            --bg-on: #ffffff;
+            --bg-on: radial-gradient(circle at center, #3a3a48, #1a1a24); /* আসল টর্চের সময় ডার্ক ব্যাকগ্রাউন্ড থাকবে */
             --glass-bg: rgba(255, 255, 255, 0.08);
             --glass-border: rgba(255, 255, 255, 0.2);
             --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
             --text-color-off: #ffffff;
-            --text-color-on: #000000;
+            --text-color-on: #ffffff;
         }
 
         * {
@@ -36,9 +41,9 @@
             transition: background 0.5s ease, color 0.5s ease;
         }
 
+        /* যখন আসল টর্চ অন থাকবে, তখন বাটনের স্টাইল চেঞ্জ হবে */
         body.torch-active {
             background: var(--bg-on);
-            color: var(--text-color-on);
         }
 
         .glass {
@@ -50,12 +55,6 @@
             box-shadow: var(--glass-shadow);
         }
 
-        body.torch-active .glass {
-            background: rgba(0, 0, 0, 0.05);
-            border: 1px solid rgba(0, 0, 0, 0.1);
-            box-shadow: none;
-        }
-
         .status-container {
             position: absolute;
             top: 15%;
@@ -64,6 +63,12 @@
             font-weight: 600;
             letter-spacing: 1px;
             text-transform: uppercase;
+        }
+
+        body.torch-active .status-container {
+            border-color: #5b92e5;
+            color: #5b92e5;
+            box-shadow: 0 0 15px rgba(91, 146, 229, 0.4);
         }
 
         .power-btn {
@@ -85,10 +90,9 @@
         }
 
         body.torch-active .power-btn {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: rgba(0, 0, 0, 0.2);
-            color: var(--text-color-on);
-            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.1);
+            border-color: #5b92e5;
+            color: #5b92e5;
+            box-shadow: inset 0 0 30px rgba(91, 146, 229, 0.2), 0 0 40px rgba(91, 146, 229, 0.4);
         }
 
         .power-btn:active {
@@ -105,6 +109,7 @@
             stroke-linejoin: round;
         }
 
+        /* Modal Styles */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -234,104 +239,150 @@
 </head>
 <body>
 
-<div class="status-container glass" id="statusText">Torch OFF</div>
+    <div class="status-container glass" id="statusText">Torch OFF</div>
+    
+    <button class="power-btn" id="powerBtn">
+        <svg viewBox="0 0 24 24">
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+            <line x1="12" y1="2" x2="12" y2="12"></line>
+        </svg>
+    </button>
 
-<button class="power-btn" id="powerBtn">
-    <svg viewBox="0 0 24 24">
-        <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-        <line x1="12" y1="2" x2="12" y2="12"></line>
-    </svg>
-</button>
+    <div class="modal-overlay" id="paymentModal">
+        <div class="modal-content">
+            <h2>Pay Rs. 1.00 to Turn Off</h2>
+            
+            <div class="upi-box">
+                <span>Pay to this UPI ID:</span>
+                <h3>premiumtorch@airtel</h3>
+            </div>
 
-<div class="modal-overlay" id="paymentModal">
-    <div class="modal-content">
-        <h2>Pay Rs. 1.00 to Turn Off</h2>
-
-        <!-- UPI ID Display Box -->
-        <div class="upi-box">
-            <span>Pay to this UPI ID:</span>
-            <h3>razorpay.me/@sambitghosh5969</h3>
+            <input type="text" id="utrInput" class="utr-input" placeholder="Enter 12-digit UTR / Txn ID" maxlength="12">
+            
+            <button class="modal-btn btn-primary" id="btnVerify">Verify Payment</button>
+            <button class="modal-btn btn-secondary" id="btnCancel">Keep it ON</button>
         </div>
-
-        <!-- UTR Input Field -->
-        <input type="text" id="utrInput" class="utr-input" placeholder="Enter 12-digit UTR Number" maxlength="12">
-
-        <button class="modal-btn btn-primary" id="btnVerify">Verify Payment</button>
-        <button class="modal-btn btn-secondary" id="btnCancel">Keep it ON</button>
     </div>
-</div>
 
-<script>
-    const powerBtn = document.getElementById('powerBtn');
-    const statusText = document.getElementById('statusText');
-    const paymentModal = document.getElementById('paymentModal');
-    const btnVerify = document.getElementById('btnVerify');
-    const btnCancel = document.getElementById('btnCancel');
-    const utrInput = document.getElementById('utrInput');
+    <script>
+        // --- 1. Firebase Configuration & Initialization ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAIDjA5tsZj21ohV_pLbpTym-zV6deF_dI",
+            authDomain: "premiumtorch-a6e43.firebaseapp.com",
+            databaseURL: "https://premiumtorch-a6e43-default-rtdb.asia-southeast1.firebasedatabase.app", 
+            projectId: "premiumtorch-a6e43",
+            storageBucket: "premiumtorch-a6e43.firebasestorage.app",
+            messagingSenderId: "355094891765",
+            appId: "1:355094891765:web:c39761d02ce0a0de5e89bc",
+            measurementId: "G-LPTXE3RNBM"
+        };
 
-    let isTorchOn = false;
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
 
-    function turnTorchOn() {
-        isTorchOn = true;
-        document.body.classList.add('torch-active');
-        statusText.innerText = 'Torch ON';
+        // --- 2. Hardware Torch Logic ---
+        const powerBtn = document.getElementById('powerBtn');
+        const statusText = document.getElementById('statusText');
+        const paymentModal = document.getElementById('paymentModal');
+        const btnVerify = document.getElementById('btnVerify');
+        const btnCancel = document.getElementById('btnCancel');
+        const utrInput = document.getElementById('utrInput');
 
-        try {
-            if(document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen();
+        let isTorchOn = false;
+        let videoStream = null;
+        let videoTrack = null;
+
+        async function turnTorchOn() {
+            try {
+                // ক্যামেরার পারমিশন নেওয়া হচ্ছে আসল টর্চ জ্বালানোর জন্য
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" } // পেছনের ক্যামেরা
+                });
+                
+                videoTrack = videoStream.getVideoTracks()[0];
+                const capabilities = videoTrack.getCapabilities();
+
+                // চেক করা হচ্ছে ফোনে টর্চ সাপোর্ট করে কি না
+                if (capabilities.torch) {
+                    await videoTrack.applyConstraints({
+                        advanced: [{ torch: true }]
+                    });
+                    
+                    isTorchOn = true;
+                    document.body.classList.add('torch-active');
+                    statusText.innerText = 'Torch ON';
+                } else {
+                    alert("আপনার ডিভাইসের ব্রাউজারে হার্ডওয়্যার টর্চ সাপোর্ট করছে না!");
+                    videoTrack.stop();
+                }
+            } catch (error) {
+                console.error("Torch error:", error);
+                alert("আসল টর্চ অন করতে হলে ক্যামেরার পারমিশন Allow করতে হবে!");
             }
-        } catch(e) {}
-    }
+        }
 
-    function turnTorchOff() {
-        isTorchOn = false;
-        document.body.classList.remove('torch-active');
-        statusText.innerText = 'Torch OFF';
-        paymentModal.classList.remove('active');
-        utrInput.value = ''; // ইনপুট ক্লিয়ার করা হচ্ছে
-        btnVerify.innerText = 'Verify Payment';
-        btnVerify.disabled = false;
-
-        try {
-            if(document.exitFullscreen) {
-                document.exitFullscreen();
+        function turnTorchOff() {
+            // টর্চ এবং ক্যামেরা বন্ধ করা
+            if (videoTrack) {
+                videoTrack.applyConstraints({ advanced: [{ torch: false }] })
+                    .then(() => {
+                        videoTrack.stop();
+                        videoStream = null;
+                    })
+                    .catch(err => console.error(err));
             }
-        } catch(e) {}
-    }
 
-    powerBtn.addEventListener('click', () => {
-        if (!isTorchOn) {
-            turnTorchOn();
-        } else {
-            paymentModal.classList.add('active');
+            isTorchOn = false;
+            document.body.classList.remove('torch-active');
+            statusText.innerText = 'Torch OFF';
+            paymentModal.classList.remove('active');
+            utrInput.value = ''; 
+            btnVerify.innerText = 'Verify Payment';
+            btnVerify.disabled = false;
         }
-    });
 
-    btnCancel.addEventListener('click', () => {
-        paymentModal.classList.remove('active');
-        utrInput.value = ''; // ক্যানসেল করলে ইনপুট ক্লিয়ার হবে
-    });
+        // --- 3. Button Events ---
+        powerBtn.addEventListener('click', () => {
+            if (!isTorchOn) {
+                turnTorchOn();
+            } else {
+                paymentModal.classList.add('active'); 
+            }
+        });
 
-    // UTR ভেরিফিকেশন লজিক
-    btnVerify.addEventListener('click', () => {
-        const utrValue = utrInput.value.trim();
+        btnCancel.addEventListener('click', () => {
+            paymentModal.classList.remove('active');
+            utrInput.value = ''; 
+        });
 
-        // চেক করা হচ্ছে UTR নম্বরে কিছু লেখা হয়েছে কি না (সাধারণত UTR ১২ ডিজিটের হয়)
-        if (utrValue.length >= 10) {
+        // --- 4. Firebase UTR Verification Logic ---
+        btnVerify.addEventListener('click', () => {
+            const utrValue = utrInput.value.trim();
+            
+            if (utrValue.length >= 10) {
+                btnVerify.innerText = "Verifying from Bank...";
+                btnVerify.disabled = true;
 
-            // রিয়েলিস্টিক লোডিং অ্যানিমেশন
-            btnVerify.innerText = "Verifying...";
-            btnVerify.disabled = true;
+                db.ref('verified_utrs/' + utrValue).once('value').then((snapshot) => {
+                    if (snapshot.exists()) {
+                        alert("Payment Verified Automatically!\nTxn ID: " + utrValue);
+                        turnTorchOff();
+                    } else {
+                        alert("Payment not received yet or Invalid Txn ID!\nIf you just paid, please wait 1 minute and try again.");
+                        btnVerify.innerText = "Verify Payment";
+                        btnVerify.disabled = false;
+                    }
+                }).catch((error) => {
+                    console.error(error);
+                    alert("Database Error! Please check Firebase Database Rules.");
+                    btnVerify.innerText = "Verify Payment";
+                    btnVerify.disabled = false;
+                });
 
-            setTimeout(() => {
-                alert("Payment Verified Successfully!\nUTR: " + utrValue);
-                turnTorchOff();
-            }, 1500); // ১.৫ সেকেন্ড পর সাকসেস হবে
-
-        } else {
-            alert("Please enter a valid 12-digit UTR Number!");
-        }
-    });
-</script>
+            } else {
+                alert("Please enter a valid 12-digit UTR / Txn ID!");
+            }
+        });
+    </script>
 </body>
 </html>
